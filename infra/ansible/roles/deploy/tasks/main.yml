@@ -1,4 +1,22 @@
 ---
+- name: Upgrade Docker to latest version
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: latest
+    update_cache: yes
+  become: yes
+
+- name: Restart Docker service
+  systemd:
+    name: docker
+    state: restarted
+  become: yes
+
 - name: Create application directory
   file:
     path: /home/ubuntu/app
