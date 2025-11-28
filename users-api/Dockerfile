@@ -10,7 +10,7 @@ COPY src ./src
 
 RUN mvn package -DskipTests
 
-FROM openjdk:8-jre-alpine
+FROM amazoncorretto:8-alpine
 
 WORKDIR /app
 
