@@ -97,21 +97,5 @@ resource "aws_instance" "app_server" {
   }
 }
 
-resource "null_resource" "ansible_provisioner" {
-  depends_on = [aws_instance.app_server]
-
-  triggers = {
-    instance_id = aws_instance.app_server.id
-  }
-
-  provisioner "local-exec" {
-    command = "sleep 60"
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      cd ${path.module}/../ansible && \
-      ansible-playbook -i inventory.ini playbook.yml
-    EOT
-  }
-}
+# Ansible provisioning is handled by GitHub Actions workflow
+# See .github/workflows/infrastructure.yml - ansible-deploy job
