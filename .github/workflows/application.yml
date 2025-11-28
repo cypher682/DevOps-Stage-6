@@ -103,9 +103,9 @@ jobs:
             Deployed by: ${{ github.actor }}
             
             Application URLs:
-            - Frontend: https://app.cipherpol.xyz
-            - Auth API: https://app.cipherpol.xyz/api/auth
-            - Todos API: https://app.cipherpol.xyz/api/todos
-            - Users API: https://app.cipherpol.xyz/api/users
+            - Frontend: https://todoapp.mooo.com
+            - Auth API: https://todoapp.mooo.com/api/auth
+            - Todos API: https://todoapp.mooo.com/api/todos
+            - Users API: https://todoapp.mooo.com/api/users
             
             Workflow URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
