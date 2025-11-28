@@ -78,10 +78,10 @@ jobs:
       - name: Verify deployment
         run: |
           echo "Application deployed successfully!"
-          echo "Frontend: https://todo.cipherpol.xyz"
-          echo "Auth API: https://todo.cipherpol.xyz/api/auth"
-          echo "Todos API: https://todo.cipherpol.xyz/api/todos"
-          echo "Users API: https://todo.cipherpol.xyz/api/users"
+          echo "Frontend: https://app.cipherpol.xyz"
+          echo "Auth API: https://app.cipherpol.xyz/api/auth"
+          echo "Todos API: https://app.cipherpol.xyz/api/todos"
+          echo "Users API: https://app.cipherpol.xyz/api/users"
 
       - name: Send deployment notification
         if: success()
@@ -103,9 +103,9 @@ jobs:
             Deployed by: ${{ github.actor }}
             
             Application URLs:
-            - Frontend: https://todo.cipherpol.xyz
-            - Auth API: https://todo.cipherpol.xyz/api/auth
-            - Todos API: https://todo.cipherpol.xyz/api/todos
-            - Users API: https://todo.cipherpol.xyz/api/users
+            - Frontend: https://app.cipherpol.xyz
+            - Auth API: https://app.cipherpol.xyz/api/auth
+            - Todos API: https://app.cipherpol.xyz/api/todos
+            - Users API: https://app.cipherpol.xyz/api/users
             
             Workflow URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
