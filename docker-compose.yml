@@ -47,7 +47,7 @@ services:
       - app-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=Host(`app.cipherpol.xyz`)"
+      - "traefik.http.routers.frontend.rule=Host(`todoapp.mooo.com`)"
       - "traefik.http.routers.frontend.entrypoints=websecure"
       - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
       - "traefik.http.services.frontend.loadbalancer.server.port=80"
@@ -68,7 +68,7 @@ services:
       - app-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.auth-api.rule=Host(`app.cipherpol.xyz`) && PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.auth-api.rule=Host(`todoapp.mooo.com`) && PathPrefix(`/api/auth`)"
       - "traefik.http.routers.auth-api.entrypoints=websecure"
       - "traefik.http.routers.auth-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.auth-api.middlewares=auth-stripprefix"
@@ -94,7 +94,7 @@ services:
       - app-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.todos-api.rule=Host(`app.cipherpol.xyz`) && PathPrefix(`/api/todos`)"
+      - "traefik.http.routers.todos-api.rule=Host(`todoapp.mooo.com`) && PathPrefix(`/api/todos`)"
       - "traefik.http.routers.todos-api.entrypoints=websecure"
       - "traefik.http.routers.todos-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.todos-api.middlewares=todos-stripprefix"
@@ -116,7 +116,7 @@ services:
       - app-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.users-api.rule=Host(`app.cipherpol.xyz`) && PathPrefix(`/api/users`)"
+      - "traefik.http.routers.users-api.rule=Host(`todoapp.mooo.com`) && PathPrefix(`/api/users`)"
       - "traefik.http.routers.users-api.entrypoints=websecure"
       - "traefik.http.routers.users-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.users-api.middlewares=users-stripprefix"
