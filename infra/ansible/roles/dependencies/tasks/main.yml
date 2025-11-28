@@ -77,7 +77,7 @@
   changed_when: false
 
 - name: Verify Docker Compose installation
-  command: docker-compose --version
+  command: docker compose --version
   register: docker_compose_version
   changed_when: false
 
