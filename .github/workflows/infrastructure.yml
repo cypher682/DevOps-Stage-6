@@ -104,33 +104,54 @@ jobs:
           IP=$(terraform output -raw instance_public_ip)
           echo "NEW_EC2_IP=$IP" >> $GITHUB_ENV
           echo "Update GoDaddy A records (@, app, auth, todos, users) → $IP"
-
+              
+              
+              
   ansible-deploy:
+    name: Ansible Deployment
     needs: terraform-apply
     runs-on: ubuntu-latest
+    # ← REMOVE the complex if: condition completely
+    # We always want Ansible to run after a successful apply
     steps:
       - uses: actions/checkout@v4
 
-      - name: Write SSH key
+      - name: Write SSH private key
         run: |
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/key
           chmod 600 /tmp/key
 
       - name: Install Ansible
-        run: sudo apt-get update && sudo apt-get install -y ansible
+        run: sudo apt-get update -qq && sudo apt-get install -y ansible
 
-      - name: Generate fresh inventory
+      - name: Get fresh instance IP from Terraform state
+        id: ip
         run: |
-          IP=$(cd infra/terraform && terraform output -raw instance_public_ip)
+          cd infra/terraform
+          IP=$(terraform output -raw instance_public_ip)
+          echo "IP=$IP" >> $GITHUB_OUTPUT
+          echo "Deploying to $IP"
+
+      - name: Create fresh inventory
+        run: |
           cat > infra/ansible/inventory.ini <<EOF
           [app_server]
-          $IP ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/key ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+          ${{ steps.ip.outputs.IP }} ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/key ansible_ssh_common_args='-o StrictHostKeyChecking=no'
           EOF
 
-      - name: Wait for SSH
+      - name: Wait for SSH (max 5 minutes)
         run: |
-          until nc -z $IP 22; do sleep 5; done
-          sleep 20
+          for i in {1..60}; do
+            nc -z ${{ steps.ip.outputs.IP }} 22 && echo "SSH ready" && exit 0
+            echo "Waiting for SSH... ($i/60)"
+            sleep 5
+          done
+          echo "SSH timeout" && exit 1
+
+      - name: Run Ansible playbook
+        run: |
+          cd infra/ansible
+          ansible-playbook -i inventory.ini playbook.yml --private-key /tmp/key -vv
 
       - name: Run Ansible
         run: |
