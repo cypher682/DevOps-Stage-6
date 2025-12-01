@@ -1,200 +1,342 @@
 name: Infrastructure Deployment
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'infra/terraform/**'
-      - 'infra/ansible/**'
-      - '.github/workflows/infrastructure.yml'
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/terraform/**'
+      - 'infra/ansible/**'
+      - '.github/workflows/infrastructure.yml'
+  workflow_dispatch:
+
 env:
-  TF_CLOUD_ORGANIZATION: "cypher682-org"
-  TF_WORKSPACE: "stage6"
-  TF_API_TOKEN: "${{ secrets.TF_CLOUD_TOKEN }}"
+  TF_CLOUD_ORGANIZATION: "cypher682-org"
+  TF_WORKSPACE: "stage6"
+  TF_API_TOKEN: "${{ secrets.TF_CLOUD_TOKEN }}"
+
 jobs:
-  terraform-plan:
-    name: Terraform Plan and Drift Detection
-    runs-on: ubuntu-latest
-    outputs:
-      drift_detected: ${{ steps.drift.outputs.drift_detected }}
-      plan_exitcode: ${{ steps.plan.outputs.exitcode }}
-   
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.6.0
-          cli_config_credentials_token: ${{ secrets.TF_CLOUD_TOKEN }}
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - name: Terraform Init
-        id: init
-        run: |
-          cd infra/terraform
-          terraform init
-      - name: Terraform Plan
-        id: plan
-        run: |
-          cd infra/terraform
-          terraform plan -detailed-exitcode -out=tfplan || echo "exitcode=$?" >> $GITHUB_OUTPUT
-        continue-on-error: true
-      - name: Detect Drift
-        id: drift
-        run: |
-          if [ "${{ steps.plan.outputs.exitcode }}" == "2" ]; then
-            echo "drift_detected=true" >> $GITHUB_OUTPUT
-            echo "DRIFT DETECTED: Infrastructure changes are required"
-          else
-            echo "drift_detected=false" >> $GITHUB_OUTPUT
-            echo "NO DRIFT: Infrastructure is up to date"
-          fi
-      - name: Save plan output
-        if: steps.drift.outputs.drift_detected == 'true'
-        run: |
-          cd infra/terraform
-          terraform show tfplan > plan_output.txt
-      - name: Upload plan artifact
-        if: steps.drift.outputs.drift_detected == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan
-          path: infra/terraform/plan_output.txt
-  send-drift-alert:
-    name: Send Drift Detection Email
-    runs-on: ubuntu-latest
-    needs: terraform-plan
-    if: needs.terraform-plan.outputs.drift_detected == 'true'
-   
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Download plan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-plan
-      - name: Send email notification
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: ${{ secrets.GMAIL_USER }}
-          password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          subject: "DRIFT DETECTED - DevOps Stage 6 Infrastructure"
-          to: ${{ secrets.ALERT_EMAIL }}
-          from: ${{ secrets.GMAIL_USER }}
-          body: |
-            INFRASTRUCTURE DRIFT DETECTED
-           
-            Repository: ${{ github.repository }}
-            Branch: ${{ github.ref_name }}
-            Commit: ${{ github.sha }}
-            Triggered by: ${{ github.actor }}
-           
-            Terraform has detected changes in your infrastructure.
-           
-            ACTION REQUIRED:
-            Please review the plan and approve the workflow to apply changes.
-           
-            Workflow URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-           
-            The plan output is attached to this email.
-          attachments: plan_output.txt
-      - name: Wait for manual approval
-        run: |
-          echo "Drift detected. Waiting for manual approval..."
-          echo "Please review the plan and approve the workflow to continue."
-  terraform-apply:
-    name: Terraform Apply
-    runs-on: ubuntu-latest
-    needs: [terraform-plan, send-drift-alert]
-    if: always() && (needs.terraform-plan.outputs.drift_detected == 'false' || (needs.terraform-plan.outputs.drift_detected == 'true' && needs.send-drift-alert.result == 'success'))
-    environment:
-      name: production
-   
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.6.0
-          cli_config_credentials_token: ${{ secrets.TF_CLOUD_TOKEN }}
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - name: Terraform Init
-        run: |
-          cd infra/terraform
-          terraform init
-      - name: Terraform Apply
-        run: |
-          cd infra/terraform
-          terraform apply -auto-approve
-      - name: Get instance IP
-        id: instance_ip
-        run: |
-          cd infra/terraform
-          INSTANCE_IP=$(terraform output -raw instance_public_ip 2>&1 | grep -oE '[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}' | head -1)
-          echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
-          echo "Instance IP: $INSTANCE_IP"
-      - name: Display DNS configuration
-        run: |
-          echo "DNS Configuration Required:"
-          echo "Create A record: app.cipherpol.xyz -> ${{ steps.instance_ip.outputs.instance_ip }}"
-  ansible-deploy:
-    name: Ansible Deployment
-    runs-on: ubuntu-latest
-    needs: terraform-apply
-   
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.6.0
-          cli_config_credentials_token: ${{ secrets.TF_CLOUD_TOKEN }}
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - name: Terraform Init
-        run: |
-          cd infra/terraform
-          terraform init
-      - name: Generate Ansible inventory
-        run: |
-          cd infra/terraform
-          INSTANCE_IP=$(terraform output -raw instance_public_ip 2>&1 | grep -oE '[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}' | head -1)
-          echo "[app_servers]" > ../ansible/inventory.ini
-          echo "app_server ansible_host=$INSTANCE_IP ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/ssh_key ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> ../ansible/inventory.ini
-      - name: Setup SSH key
-        run: |
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/ssh_key
-          chmod 600 /tmp/ssh_key
-      - name: Install Ansible
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ansible
-      - name: Wait for instance to be ready
-        run: sleep 60
-      - name: Run Ansible playbook
-        run: |
-          cd infra/ansible
-          ansible-playbook -i inventory.ini playbook.yml -v
-      - name: Deployment complete
-        run: |
-          echo "Deployment completed successfully!"
-          echo "Application should be available at: https://app.cipherpol.xyz"
+  terraform-refresh:
+    name: Refresh Terraform State
+    runs-on: ubuntu-latest
+    outputs:
+      state_synced: ${{ steps.refresh.outputs.state_synced }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+          cli_config_credentials_token: ${{ secrets.TF_CLOUD_TOKEN }}
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Terraform Init
+        run: |
+          cd infra/terraform
+          terraform init
+      
+      - name: Refresh State
+        id: refresh
+        run: |
+          cd infra/terraform
+          terraform refresh -lock=false
+          echo "state_synced=true" >> $GITHUB_OUTPUT
+
+  terraform-plan:
+    name: Terraform Plan and Drift Detection
+    runs-on: ubuntu-latest
+    needs: terraform-refresh
+    outputs:
+      drift_detected: ${{ steps.drift.outputs.drift_detected }}
+      plan_exitcode: ${{ steps.plan.outputs.exitcode }}
+      instance_exists: ${{ steps.check_instance.outputs.exists }}
+   
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+          cli_config_credentials_token: ${{ secrets.TF_CLOUD_TOKEN }}
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Terraform Init
+        id: init
+        run: |
+          cd infra/terraform
+          terraform init
+      
+      - name: Check if instance exists
+        id: check_instance
+        run: |
+          cd infra/terraform
+          INSTANCE_IP=$(terraform output -raw instance_public_ip 2>&1 | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
+          
+          if [ -n "$INSTANCE_IP" ]; then
+            if aws ec2 describe-instances \
+              --filters "Name=ip-address,Values=$INSTANCE_IP" "Name=instance-state-name,Values=running" \
+              --query 'Reservations[*].Instances[*].InstanceId' \
+              --output text | grep -q .; then
+              echo "exists=true" >> $GITHUB_OUTPUT
+              echo "Instance exists and running"
+            else
+              echo "exists=false" >> $GITHUB_OUTPUT
+              echo "Instance not found or not running"
+            fi
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No instance IP in state"
+          fi
+      
+      - name: Terraform Plan
+        id: plan
+        run: |
+          cd infra/terraform
+          terraform plan -detailed-exitcode -out=tfplan || echo "exitcode=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+      
+      - name: Detect Drift
+        id: drift
+        run: |
+          if [ "${{ steps.plan.outputs.exitcode }}" == "2" ]; then
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+            echo "DRIFT DETECTED: Infrastructure changes required"
+          else
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+            echo "NO DRIFT: Infrastructure up to date"
+          fi
+      
+      - name: Save plan output
+        if: steps.drift.outputs.drift_detected == 'true'
+        run: |
+          cd infra/terraform
+          terraform show tfplan > plan_output.txt
+      
+      - name: Upload plan artifact
+        if: steps.drift.outputs.drift_detected == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: infra/terraform/plan_output.txt
+
+  send-drift-alert:
+    name: Send Drift Detection Email
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: needs.terraform-plan.outputs.drift_detected == 'true'
+   
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+      
+      - name: Send email notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "DRIFT DETECTED - DevOps Stage 6 Infrastructure"
+          to: ${{ secrets.ALERT_EMAIL }}
+          from: ${{ secrets.GMAIL_USER }}
+          body: |
+            INFRASTRUCTURE DRIFT DETECTED
+           
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Triggered by: ${{ github.actor }}
+            Instance Exists: ${{ needs.terraform-plan.outputs.instance_exists }}
+           
+            Terraform detected infrastructure changes.
+           
+            ACTION REQUIRED:
+            Review plan and approve workflow to apply changes.
+           
+            Workflow URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+           
+            Plan output attached.
+          attachments: plan_output.txt
+
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, send-drift-alert]
+    if: always() && (needs.terraform-plan.outputs.drift_detected == 'false' || (needs.terraform-plan.outputs.drift_detected == 'true' && needs.send-drift-alert.result == 'success'))
+    environment:
+      name: production
+    outputs:
+      instance_ip: ${{ steps.instance_ip.outputs.instance_ip }}
+      apply_changes: ${{ steps.apply_check.outputs.changes_applied }}
+   
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+          cli_config_credentials_token: ${{ secrets.TF_CLOUD_TOKEN }}
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Terraform Init
+        run: |
+          cd infra/terraform
+          terraform init
+      
+      - name: Terraform Apply
+        id: apply_check
+        run: |
+          cd infra/terraform
+          if terraform apply -auto-approve | tee apply_output.txt; then
+            if grep -q "Apply complete" apply_output.txt; then
+              echo "changes_applied=true" >> $GITHUB_OUTPUT
+            else
+              echo "changes_applied=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "changes_applied=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+      
+      - name: Get instance IP
+        id: instance_ip
+        run: |
+          cd infra/terraform
+          INSTANCE_IP=$(terraform output -raw instance_public_ip 2>&1 | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
+          echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
+          echo "Instance IP: $INSTANCE_IP"
+      
+      - name: Verify instance is running
+        id: verify_instance
+        run: |
+          INSTANCE_IP="${{ steps.instance_ip.outputs.instance_ip }}"
+          MAX_RETRIES=10
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if aws ec2 describe-instances \
+              --filters "Name=ip-address,Values=$INSTANCE_IP" "Name=instance-state-name,Values=running" \
+              --query 'Reservations[*].Instances[*].InstanceId' \
+              --output text | grep -q .; then
+              echo "Instance verified running"
+              exit 0
+            fi
+            echo "Waiting for instance... ($((RETRY_COUNT+1))/$MAX_RETRIES)"
+            sleep 15
+            RETRY_COUNT=$((RETRY_COUNT+1))
+          done
+          
+          echo "Instance verification failed"
+          exit 1
+      
+      - name: Display DNS configuration
+        run: |
+          echo "DNS Configuration:"
+          echo "A record: app.cipherpol.xyz -> ${{ steps.instance_ip.outputs.instance_ip }}"
+
+  ansible-deploy:
+    name: Ansible Deployment
+    runs-on: ubuntu-latest
+    needs: [terraform-apply, terraform-plan]
+    if: needs.terraform-apply.outputs.instance_ip != ''
+   
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+          cli_config_credentials_token: ${{ secrets.TF_CLOUD_TOKEN }}
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Terraform Init
+        run: |
+          cd infra/terraform
+          terraform init
+      
+      - name: Verify instance accessibility
+        id: verify_ssh
+        run: |
+          INSTANCE_IP="${{ needs.terraform-apply.outputs.instance_ip }}"
+          MAX_RETRIES=20
+          RETRY_COUNT=0
+          
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/ssh_key
+          chmod 600 /tmp/ssh_key
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$INSTANCE_IP "echo 'SSH successful'" 2>/dev/null; then
+              echo "SSH connection verified"
+              exit 0
+            fi
+            echo "Waiting for SSH... ($((RETRY_COUNT+1))/$MAX_RETRIES)"
+            sleep 15
+            RETRY_COUNT=$((RETRY_COUNT+1))
+          done
+          
+          echo "SSH verification failed"
+          exit 1
+      
+      - name: Generate Ansible inventory
+        run: |
+          INSTANCE_IP="${{ needs.terraform-apply.outputs.instance_ip }}"
+          mkdir -p infra/ansible
+          echo "[app_servers]" > infra/ansible/inventory.ini
+          echo "app_server ansible_host=$INSTANCE_IP ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/ssh_key ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> infra/ansible/inventory.ini
+      
+      - name: Setup SSH key
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/ssh_key
+          chmod 600 /tmp/ssh_key
+      
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+      
+      - name: Run Ansible playbook
+        run: |
+          cd infra/ansible
+          ansible-playbook -i inventory.ini playbook.yml -v
+      
+      - name: Deployment complete
+        run: |
+          echo "Deployment completed successfully!"
+          echo "Application: https://app.cipherpol.xyz"
