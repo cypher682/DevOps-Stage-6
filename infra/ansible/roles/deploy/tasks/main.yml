@@ -50,7 +50,7 @@
   register: git_pull
 
 - name: Stop existing containers
-  command: docker compose down
+  shell: sg docker -c "docker compose down"
   args:
     chdir: /home/ubuntu/app
   become_user: ubuntu
@@ -58,7 +58,7 @@
   when: git_pull.changed or not git_repo.stat.exists
 
 - name: Remove old images
-  command: docker compose down --rmi all
+  shell: sg docker -c "docker compose down --rmi all"
   args:
     chdir: /home/ubuntu/app
   become_user: ubuntu
@@ -66,7 +66,7 @@
   when: git_pull.changed or not git_repo.stat.exists
 
 - name: Build and start containers
-  command: docker compose up -d --build
+  shell: sg docker -c "docker compose up -d --build"
   args:
     chdir: /home/ubuntu/app
   become_user: ubuntu
@@ -79,7 +79,7 @@
     seconds: 30
 
 - name: Check running containers
-  command: docker compose ps
+  shell: sg docker -c "docker compose ps"
   args:
     chdir: /home/ubuntu/app
   become_user: ubuntu
@@ -91,7 +91,7 @@
     msg: "{{ container_status.stdout_lines }}"
 
 - name: Check Traefik logs
-  command: docker logs traefik --tail 50
+  shell: sg docker -c "docker logs traefik --tail 50"
   become_user: ubuntu
   register: traefik_logs
   changed_when: false
