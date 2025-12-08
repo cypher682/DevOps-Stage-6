@@ -72,6 +72,8 @@
   become_user: ubuntu
   environment:
     DOCKER_BUILDKIT: "1"
+  async: 900
+  poll: 10
   register: docker_compose_up
 
 - name: Wait for services to be healthy
