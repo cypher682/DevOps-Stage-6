@@ -25,7 +25,7 @@ variable "project_name" {
 variable "domain_name" {
   description = "Domain name for the application"
   type        = string
-  default     = "app.cipherpol.xyz"
+  default     = "todoapp.mooo.com"
 }
 
 variable "github_repo" {
